@@ -1,0 +1,203 @@
+---
+title: "ISOMAP Simulations"
+author: "Luis Sierra Muntané"
+date: "2025-03-31"
+output: pdf_document
+---
+
+```{r}
+# Libraries used for visualization and to import the datasets
+library(rgl)
+library(keras)
+```
+
+### Implementation:
+
+```{r}
+# Function that performs the ISOMAP embedding by constructing the neighborhood 
+# graph using k nearest neighbors, and d being the number of retained eigenvalues
+isomap_embedding <- function(data, k = 5, d = 2) {
+  n <- nrow(data)
+  
+  # 1. Compute full Euclidean distance matrix
+  D <- as.matrix(dist(data))
+  
+  # 2. Build the neighborhood graph (k-nearest neighbors)
+  # Initialize graph with Inf and 0 on the diagonal
+  graph <- matrix(Inf, n, n)
+  diag(graph) <- 0
+  
+  # For each point, keep distances only to its k-nearest neighbors
+  for (i in 1:n) {
+    # order returns indices sorted by distance (first element is i itself)
+    neighbors <- order(D[i,])[2:(k + 1)]
+    graph[i, neighbors] <- D[i, neighbors]
+  }
+  
+  # To ensure symmetry, make the graph undirected:
+  for (i in 1:n) {
+    for (j in 1:n) {
+      graph[i, j] <- min(graph[i, j], graph[j, i])
+      graph[j, i] <- graph[i, j]
+    }
+  }
+  
+  # 3. Compute geodesic distances using the Floyd–Warshall algorithm
+  for (k_ in 1:n) {
+    for (i in 1:n) {
+      for (j in 1:n) {
+        if (graph[i, k_] + graph[k_, j] < graph[i, j]) {
+          graph[i, j] <- graph[i, k_] + graph[k_, j]
+        }
+      }
+    }
+  }
+  
+  # 4. Classical MDS: Compute low-dimensional embedding
+  # Square the geodesic distance matrix
+  D2 <- graph^2
+  
+  # Create the centering matrix
+  J <- diag(n) - matrix(1, n, n) / n
+  
+  # Double center the matrix
+  B <- -0.5 * J %*% D2 %*% J
+  
+  # Eigen decomposition
+  eig <- eigen(B)
+  
+  # Extract the top d eigenvectors (and corresponding eigenvalues)
+  # Note: Only positive eigenvalues are meaningful here
+  L <- diag(sqrt(eig$values[1:d]))
+  V <- eig$vectors[, 1:d]
+  
+  # The low-dimensional coordinates
+  Y <- V %*% L
+  
+  return(list(embedding = Y, geodesic_distances = graph))
+}
+```
+
+
+```{r}
+# Example usage:
+# Generate a synthetic dataset (e.g., points on a 2D manifold embedded in 3D)
+set.seed(42)
+n_points <- 100
+theta <- runif(n_points, 0, 2 * pi)
+# Points arranged as a cylinder
+z <- runif(n_points, -1, 1)
+x <- cos(theta) + 0.1 * rnorm(n_points)
+y <- sin(theta) + 0.1 * rnorm(n_points)
+data3D <- cbind(x, y, z)
+
+plot3d(data3D[,1], data3D[,2], data3D[,3], 
+       col = , 
+       size = 2, 
+       type = "s", 
+       xlab = "X", ylab = "Y", zlab = "Z")
+rglwidget()
+```
+```{r}
+# The low-dimensional embedding should look somewhat like a circle
+result <- isomap_embedding(data3D, k = 10, d = 2)
+embedding <- result$embedding
+
+plot(embedding, main = "ISOMAP Embedding of Cylinder (2D)", xlab = "Component 1", ylab = "Component 2",
+     pch = 19, col = "blue")
+
+```
+
+
+```{r}
+
+
+```
+
+### Simulations:
+
+#### Swiss Roll:
+
+```{r}
+set.seed(2201)
+
+# Number of data points
+n <- 1000
+
+# Generate parameters:
+# 't' controls the roll (angular parameter) and 'h' controls the height
+t <- (3*pi/2)*(1 + 2*runif(n))  # Parameter that defines the roll's curvature
+h <- 21*runif(n)                      # Random height values
+
+# Compute the 3D coordinates of the Swiss roll
+x <- t*cos(t)
+y <- h
+z <- t*sin(t)
+
+# Combine the coordinates into a data frame
+swiss_roll <- data.frame(x = x, y = y, z = z)
+
+# Colors of the roll points
+norm_t <- (t - min(t)) / (max(t) - min(t))
+gradient_colors <- colorRampPalette(c("green", "blue"))(n)
+color_index <- round(norm_t * (n - 1)) + 1
+point_colors <- gradient_colors[color_index]
+
+# Visualize the Swiss roll in 3D using rgl
+plot3d(swiss_roll$x, swiss_roll$y, swiss_roll$z, 
+       col = point_colors, 
+       size = 2, 
+       type = "s", 
+       xlab = "X", ylab = "Y", zlab = "Z")
+rglwidget()
+```
+
+```{r}
+result <- isomap_embedding(swiss_roll, k = 10, d = 3)
+swiss_roll_embedding <- result$embedding
+
+plot(swiss_roll_embedding,  main = "ISOMAP Embedding of Swiss Roll (1000 samples)",
+     xlab = "Component 1", ylab = "Component 2",
+     col = point_colors,
+     pch = 19)
+
+plot3d(swiss_roll_embedding[,1], swiss_roll_embedding[,2], swiss_roll_embedding[,3], 
+       col = point_colors, 
+       size = 2, 
+       type = "s", 
+       xlab = "X", ylab = "Y", zlab = "Z")
+rglwidget()
+```
+
+#### MNIST:
+
+```{r}
+mnist <- keras::dataset_mnist()
+x_train <- mnist$train$x
+y_train <- mnist$train$y
+
+x_train <- array_reshape(x_train, c(nrow(x_train), 28*28))
+
+# Select a subset of data points to make this faster 
+set.seed(123)  # for reproducibility
+subset_idx <- sample(1:nrow(x_train), 500)
+x_subset <- x_train[subset_idx, ]
+y_subset <- y_train[subset_idx]
+
+result <- isomap_embedding(x_subset, k = 10, d = 3)
+mnist_embedding <- result$embedding
+
+# Plot the 2D embedding, coloring points by their digit labels.
+# We use a color palette that maps the 10 digit classes.
+plot(mnist_embedding,
+     main = "ISOMAP Embedding of MNIST (500 samples)",
+     xlab = "Component 1", ylab = "Component 2",
+     pch = 19, col = rainbow(10)[y_subset + 1])
+
+plot3d(mnist_embedding[,1], mnist_embedding[,2], mnist_embedding[,3], 
+       col = rainbow(10)[y_subset + 1], 
+       size = 2, 
+       type = "s", 
+       xlab = "X", ylab = "Y", zlab = "Z")
+rglwidget()
+```
