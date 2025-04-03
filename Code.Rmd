@@ -1,7 +1,7 @@
 ---
 title: "ISOMAP Simulations"
 author: "Luis Sierra Muntané"
-date: "2025-03-31"
+date: "2025-04-04"
 output: pdf_document
 ---
 
@@ -14,15 +14,11 @@ library(keras)
 ### Implementation:
 
 ```{r}
-# Function that performs the ISOMAP embedding by constructing the neighborhood 
-# graph using k nearest neighbors, and d being the number of retained eigenvalues
-isomap_embedding <- function(data, k = 5, d = 2) {
-  n <- nrow(data)
-  
-  # 1. Compute full Euclidean distance matrix
-  D <- as.matrix(dist(data))
-  
-  # 2. Build the neighborhood graph (k-nearest neighbors)
+# Helper functions for ISOMAP embedding
+
+# Builds the graph by making edges between a vertex and its K nearest neighbours 
+k_build_graph <- function(n, k, dist_matrix){
+
   # Initialize graph with Inf and 0 on the diagonal
   graph <- matrix(Inf, n, n)
   diag(graph) <- 0
@@ -30,19 +26,43 @@ isomap_embedding <- function(data, k = 5, d = 2) {
   # For each point, keep distances only to its k-nearest neighbors
   for (i in 1:n) {
     # order returns indices sorted by distance (first element is i itself)
-    neighbors <- order(D[i,])[2:(k + 1)]
-    graph[i, neighbors] <- D[i, neighbors]
+    neighbors <- order(dist_matrix[i,])[2:(k + 1)]
+    graph[i, neighbors] <- dist_matrix[i, neighbors]
   }
-  
-  # To ensure symmetry, make the graph undirected:
+  # To ensure symmetry of the adjacency matrix
   for (i in 1:n) {
     for (j in 1:n) {
       graph[i, j] <- min(graph[i, j], graph[j, i])
       graph[j, i] <- graph[i, j]
     }
   }
+  return(graph)
+}
+
+eps_build_graph <- function(n, epsilon, dist_matrix){
+  graph <- matrix(Inf, n, n)
+  diag(graph) <- 0
   
-  # 3. Compute geodesic distances using the Floyd–Warshall algorithm
+  for (i in 1:n) {
+    for (j in 1:n) {
+      if (i != j && dist_matrix[i, j] < epsilon) {
+        graph[i, j] <- dist_matrix[i, j]
+      }
+    }
+  }
+  # To ensure symmetry of the adjacency matrix
+  for (i in 1:n) {
+    for (j in 1:n) {
+      graph[i, j] <- min(graph[i, j], graph[j, i])
+      graph[j, i] <- graph[i, j]
+    }
+  }
+  return(graph)
+}
+
+# Function that constructs the weighted complete graph with the shortest
+# distances between each pair of vertices in cubic time Theta(n^3)
+floyd_warshall <- function(n, graph){
   for (k_ in 1:n) {
     for (i in 1:n) {
       for (j in 1:n) {
@@ -52,19 +72,37 @@ isomap_embedding <- function(data, k = 5, d = 2) {
       }
     }
   }
-  
-  # 4. Classical MDS: Compute low-dimensional embedding
-  # Square the geodesic distance matrix
+  return(graph)
+}
+
+# Performs multidimensional scaling
+mds_step <- function(n, graph){
   D2 <- graph^2
-  
-  # Create the centering matrix
-  J <- diag(n) - matrix(1, n, n) / n
+  # Centering matrix
+  J <- diag(n) - matrix(1, n, n)/n
   
   # Double center the matrix
-  B <- -0.5 * J %*% D2 %*% J
+  B <- -0.5*J %*% D2 %*% J
+  return(eigen(B))
+}
+
+# Function that performs the ISOMAP embedding by constructing the neighborhood 
+# graph using k nearest neighbors, and d being the number of retained eigenvalues
+k_isomap_embedding <- function(data, k = 5, d = 2) {
+  n <- nrow(data)
   
-  # Eigen decomposition
-  eig <- eigen(B)
+  # 1. Compute full Euclidean distance matrix
+  dist_matrix <- as.matrix(dist(data))
+  
+  # 2. Build the neighborhood graph (k-nearest neighbors), implemented as an
+  # adjacency matrix
+  graph <- k_build_graph(n, k, dist_matrix)
+  
+  # 3. Compute geodesic distances using the Floyd–Warshall algorithm
+  graph <- floyd_warshall(n, graph)
+  
+  # 4. MDS: Compute low-dimensional embedding from distance matrix
+  eig <- mds_step(n, graph)
   
   # Extract the top d eigenvectors (and corresponding eigenvalues)
   # Note: Only positive eigenvalues are meaningful here
@@ -78,6 +116,35 @@ isomap_embedding <- function(data, k = 5, d = 2) {
 }
 ```
 
+
+```{r}
+eps_isomap_embedding(data, epsilon, d = 2){
+  n <- nrow(data)
+  
+  # 1. Compute full Euclidean distance matrix
+  dist_matrix <- as.matrix(dist(data))
+  
+  # 2. Build the neighborhood graph (k-nearest neighbors), implemented as an
+  # adjacency matrix
+  graph <- eps_build_graph(n, epsilon, dist_matrix)
+  
+  # 3. Compute geodesic distances using the Floyd–Warshall algorithm
+  graph <- floyd_warshall(n, graph)
+  
+  # 4. MDS: Compute low-dimensional embedding from distance matrix
+  eig <- mds_step(n, graph)
+  
+  # Extract the top d eigenvectors (and corresponding eigenvalues)
+  # Note: Only positive eigenvalues are meaningful here
+  L <- diag(sqrt(eig$values[1:d]))
+  V <- eig$vectors[, 1:d]
+  
+  # The low-dimensional coordinates
+  Y <- V %*% L
+  
+  return(list(embedding = Y, geodesic_distances = graph))
+}
+```
 
 ```{r}
 # Example usage:
@@ -153,7 +220,7 @@ rglwidget()
 ```
 
 ```{r}
-result <- isomap_embedding(swiss_roll, k = 10, d = 3)
+result <- k_isomap_embedding(swiss_roll, k = 10, d = 3)
 swiss_roll_embedding <- result$embedding
 
 plot(swiss_roll_embedding,  main = "ISOMAP Embedding of Swiss Roll (1000 samples)",
@@ -184,7 +251,7 @@ subset_idx <- sample(1:nrow(x_train), 500)
 x_subset <- x_train[subset_idx, ]
 y_subset <- y_train[subset_idx]
 
-result <- isomap_embedding(x_subset, k = 10, d = 3)
+result <- k_isomap_embedding(x_subset, k = 20, d = 3)
 mnist_embedding <- result$embedding
 
 # Plot the 2D embedding, coloring points by their digit labels.
