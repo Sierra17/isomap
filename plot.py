@@ -39,7 +39,7 @@ def scatterplot(X, title=None):
     return fig
 
 
-def image_annotations(fig, X, image_paths, image_idx, sizex=5, sizey=5, subset=False):
+def image_annotations(fig, X, image_paths, image_idx, sizex=5, sizey=5, subset=False, subset_idx=None):
 
     """
     Mutates Plotly figure object by adding image annotations.
@@ -65,7 +65,10 @@ def image_annotations(fig, X, image_paths, image_idx, sizex=5, sizey=5, subset=F
         The length of each image annotation.
 
     subset : bool, optional (default=False)
-        Indicator whether ISOMPA was performed on a subset of the original data.
+        Indicator whether ISOMAP was performed on a subset of the original data.
+    
+    subset_idx : list of int, optional (default=None)
+        The indices of the observations used for ISOMAP. Only valid if subset=True.
 
     Outputs
     -------
@@ -74,17 +77,15 @@ def image_annotations(fig, X, image_paths, image_idx, sizex=5, sizey=5, subset=F
     """
 
     if subset:
-        order_idx = np.argsort(image_idx)
-    else:
-        order_idx = image_idx
+        image_idx = np.where(np.isin(subset_idx, image_idx))[0]
 
-    for i, j, image_path in zip(image_idx, order_idx, image_paths):
+    for i, image_path in zip(image_idx, image_paths):
         image = Image.open(image_path)
         fig.add_layout_image(
             dict(
                 source=image,
-                x=X[j, 0],
-                y=X[j, 1],
+                x=X[i, 0],
+                y=X[i, 1],
                 xref='x',
                 yref='y',
                 sizex=sizex,
