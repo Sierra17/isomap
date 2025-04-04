@@ -83,9 +83,13 @@ mds_step <- function(n, graph){
   
   # Double center the matrix
   B <- -0.5*J %*% D2 %*% J
+
   return(eigen(B))
 }
 
+```
+
+```{r}
 # Function that performs the ISOMAP embedding by constructing the neighborhood 
 # graph using k nearest neighbors, and d being the number of retained eigenvalues
 k_isomap_embedding <- function(data, k = 5, d = 2) {
@@ -105,7 +109,6 @@ k_isomap_embedding <- function(data, k = 5, d = 2) {
   eig <- mds_step(n, graph)
   
   # Extract the top d eigenvectors (and corresponding eigenvalues)
-  # Note: Only positive eigenvalues are meaningful here
   L <- diag(sqrt(eig$values[1:d]))
   V <- eig$vectors[, 1:d]
   
@@ -118,7 +121,7 @@ k_isomap_embedding <- function(data, k = 5, d = 2) {
 
 
 ```{r}
-eps_isomap_embedding(data, epsilon, d = 2){
+eps_isomap_embedding <- function(data, epsilon, d = 2){
   n <- nrow(data)
   
   # 1. Compute full Euclidean distance matrix
@@ -135,7 +138,6 @@ eps_isomap_embedding(data, epsilon, d = 2){
   eig <- mds_step(n, graph)
   
   # Extract the top d eigenvectors (and corresponding eigenvalues)
-  # Note: Only positive eigenvalues are meaningful here
   L <- diag(sqrt(eig$values[1:d]))
   V <- eig$vectors[, 1:d]
   
@@ -150,7 +152,7 @@ eps_isomap_embedding(data, epsilon, d = 2){
 # Example usage:
 # Generate a synthetic dataset (e.g., points on a 2D manifold embedded in 3D)
 set.seed(42)
-n_points <- 100
+n_points <- 200
 theta <- runif(n_points, 0, 2 * pi)
 # Points arranged as a cylinder
 z <- runif(n_points, -1, 1)
@@ -159,7 +161,7 @@ y <- sin(theta) + 0.1 * rnorm(n_points)
 data3D <- cbind(x, y, z)
 
 plot3d(data3D[,1], data3D[,2], data3D[,3], 
-       col = , 
+       col = abs(y), 
        size = 2, 
        type = "s", 
        xlab = "X", ylab = "Y", zlab = "Z")
@@ -167,7 +169,8 @@ rglwidget()
 ```
 ```{r}
 # The low-dimensional embedding should look somewhat like a circle
-result <- isomap_embedding(data3D, k = 10, d = 2)
+result <- k_isomap_embedding(data3D, k = 10, d = 2)
+#result <- eps_isomap_embedding(data3D, epsilon = 0.5, d = 2)
 embedding <- result$embedding
 
 plot(embedding, main = "ISOMAP Embedding of Cylinder (2D)", xlab = "Component 1", ylab = "Component 2",
@@ -221,6 +224,7 @@ rglwidget()
 
 ```{r}
 result <- k_isomap_embedding(swiss_roll, k = 10, d = 3)
+#result <- eps_isomap_embedding(swiss_roll, eps = 3.5, d = 3)
 swiss_roll_embedding <- result$embedding
 
 plot(swiss_roll_embedding,  main = "ISOMAP Embedding of Swiss Roll (1000 samples)",
@@ -236,6 +240,11 @@ plot3d(swiss_roll_embedding[,1], swiss_roll_embedding[,2], swiss_roll_embedding[
 rglwidget()
 ```
 
+```{r}
+# Testing range of k-values
+K <- c(1, 5, 10, 15, 20)
+```
+
 #### MNIST:
 
 ```{r}
@@ -245,13 +254,21 @@ y_train <- mnist$train$y
 
 x_train <- array_reshape(x_train, c(nrow(x_train), 28*28))
 
-# Select a subset of data points to make this faster 
+# Select a subset of data points to make this faster (max is 60k)
 set.seed(123)  # for reproducibility
-subset_idx <- sample(1:nrow(x_train), 500)
-x_subset <- x_train[subset_idx, ]
-y_subset <- y_train[subset_idx]
+n_each <- 50  # number of images per digit to keep labels balanced
 
-result <- k_isomap_embedding(x_subset, k = 20, d = 3)
+indices <- c()
+for (digit in 0:9) {
+  indices_ <- which(mnist$train$y == digit)
+  indices <- c(indices, sample(indices_, n_each))
+}
+
+X <- mnist$train$x[indices, , ]
+X <- array_reshape(X, c(10*n_each, 28*28))/255
+labels <- mnist$train$y[indices]
+
+result <- k_isomap_embedding(X, k = 20, d = 30)
 mnist_embedding <- result$embedding
 
 # Plot the 2D embedding, coloring points by their digit labels.
@@ -259,12 +276,120 @@ mnist_embedding <- result$embedding
 plot(mnist_embedding,
      main = "ISOMAP Embedding of MNIST (500 samples)",
      xlab = "Component 1", ylab = "Component 2",
-     pch = 19, col = rainbow(10)[y_subset + 1])
+     pch = 19, col = rainbow(10)[labels + 1])
 
 plot3d(mnist_embedding[,1], mnist_embedding[,2], mnist_embedding[,3], 
-       col = rainbow(10)[y_subset + 1], 
+       col = rainbow(10)[labels + 1], 
        size = 2, 
        type = "s", 
        xlab = "X", ylab = "Y", zlab = "Z")
 rglwidget()
+```
+
+##### K-Means:
+
+```{r}
+set.seed(2201)
+kmeans_result <- kmeans(mnist_embedding, centers = 10)
+clusters <- kmeans_result$cluster - 1
+
+aux_confusion_matrix <- table(True = labels, Cluster = clusters)
+confusion_matrix <- aux_confusion_matrix[, max.col(aux_confusion_matrix, 'first')]
+colnames(confusion_matrix) = seq(0,9)
+
+print("Confusion Matrix:")
+#print(confusion_matrix)
+heatmap(confusion_matrix, Colv=NA, Rowv=NA, scale='none')
+
+sensitivity <- diag(confusion_matrix) / rowSums(confusion_matrix)
+print("Sensitivity for each class:")
+print(sensitivity)
+average_sensitivity <- mean(sensitivity)
+print(paste("Average Sensitivity:", round(average_sensitivity * 100, 2), "%"))
+```
+
+
+
+```{r}
+# Select a subset for speed (e.g., 500 images)
+n <- 500
+X <- mnist$train$x[1:n, , ]
+# Reshape to 784-dimensional vectors and normalize
+X <- array_reshape(X, c(n, 28*28)) / 255
+labels <- mnist$train$y[1:n]
+
+# Compute the k-Isomap embedding
+result <- k_isomap_embedding(X, k = 10, d = 2)
+embedding <- result$embedding
+
+# Define a helper function to convert a digit vector into a raster image.
+convert_to_raster <- function(vec, img_dim = 28) {
+  # Reshape the vector into a matrix with img_dim rows.
+  m <- matrix(vec, nrow = img_dim, byrow = TRUE)
+  # Transpose the matrix and reverse the row order to rotate 90° counterclockwise.
+  m <- m[1:img_dim, ]
+  # Convert the grayscale matrix to colors using the gray scale and return as a raster.
+  as.raster(matrix(gray(m), nrow = nrow(m), ncol = ncol(m)))
+}
+
+# Plot the 2D embedding without points (reserve space for images)
+plot(embedding, type = "n", main = "k-Isomap of MNIST",
+     xlab = "Component 1", ylab = "Component 2")
+
+# Choose a scaling factor for the thumbnail images (adjust as needed)
+img_size <- 0.8*diff(range(embedding[,1]))/sqrt(n)
+
+# Overlay each image on the plot
+for (i in 1:n) {
+  img_raster <- convert_to_raster(X[i, ])
+  x <- embedding[i, 1]
+  y <- embedding[i, 2]
+  rasterImage(img_raster, x - img_size/2, y - img_size/2, x + img_size/2, y + img_size/2)
+}
+
+```
+
+```{r}
+n <- 300  # number of images to use
+X <- mnist$train$x[1:n, , ]
+X <- array_reshape(X, c(n, 28 * 28)) / 255  # flatten and normalize
+labels <- mnist$train$y[1:n]
+
+# Compute the k-Isomap embedding on the entire subset (all labels included)
+result <- k_isomap_embedding(X, k = 10, d = 2)
+embedding <- result$embedding
+
+# ----------------------------------------------------------
+# Visualization: only overlay images for a chosen label, here "2"
+
+# Plot the entire embedding as a background (optional)
+plot(embedding, type = "n",
+     main = "k-Isomap Embedding (Only Label '2' Images Overlaid)",
+     xlab = "Component 1", ylab = "Component 2")
+points(embedding, pch = 19, col = "lightgray")
+
+# Helper function to convert a digit vector into a correctly oriented raster image
+convert_to_raster <- function(vec, img_dim = 28) {
+  m <- matrix(vec, nrow = img_dim, byrow = TRUE)
+  # Transpose and reverse row order to rotate 90° counterclockwise
+  m <- m[1:img_dim, ]
+  as.raster(matrix(gray(m), nrow = nrow(m), ncol = ncol(m)))
+}
+
+# Choose the target label
+target_label <- 5
+indices <- which(labels == target_label)
+
+# Choose a thumbnail size (adjust as needed)
+img_size <- 0.8*diff(range(embedding[, 1]))/sqrt(n)
+
+# Overlay the raster images only for points with the target label
+for (i in indices) {
+  img_raster <- convert_to_raster(X[i, ])
+  x <- embedding[i, 1]
+  y <- embedding[i, 2]
+  rasterImage(img_raster, x - img_size/2, y - img_size/2,
+              x + img_size/2, y + img_size/2)
+}
+
 ```
