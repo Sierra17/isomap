@@ -5,13 +5,21 @@ date: "2025-04-04"
 output: pdf_document
 ---
 
+Simulations for the accompanying report on the ISOMAP algorithm by Tenenbaum et al. 2000. Every once in a while there will be code that is commented out involving prefixes such as `rgl` or the function `plot3d`. This code allows for an interactive view of 3D points as scatter plots, which unfortunately cannot be rendered into a pdf file. They are left in for the users that may be interested in such plots and able to run the code themselves.
+
+&nbsp;
+
 ```{r}
-# Libraries used for visualization and to import the datasets
+# Libraries used for visualization and to import the MNIST dataset
 library(rgl)
+library(scatterplot3d)
 library(keras)
+options(rgl.useNULL = TRUE)
 ```
 
-### Implementation:
+&nbsp;
+
+### Algorithm Implementation:
 
 ```{r}
 # Helper functions for ISOMAP embedding
@@ -89,6 +97,8 @@ mds_step <- function(n, graph){
 
 ```
 
+&nbsp;
+
 ```{r}
 # Function that performs the ISOMAP embedding by constructing the neighborhood 
 # graph using k nearest neighbors, and d being the number of retained eigenvalues
@@ -119,6 +129,7 @@ k_isomap_embedding <- function(data, k = 5, d = 2) {
 }
 ```
 
+&nbsp;
 
 ```{r}
 eps_isomap_embedding <- function(data, epsilon, d = 2){
@@ -148,25 +159,40 @@ eps_isomap_embedding <- function(data, epsilon, d = 2){
 }
 ```
 
+&nbsp;
+
 ```{r}
 # Example usage:
 # Generate a synthetic dataset (e.g., points on a 2D manifold embedded in 3D)
 set.seed(42)
-n_points <- 200
-theta <- runif(n_points, 0, 2 * pi)
+n <- 200
+# theta <- runif(n_points, 0, 2 * pi)
+t <- (3*pi/2)*(1 + 2*runif(n)) 
 # Points arranged as a cylinder
-z <- runif(n_points, -1, 1)
-x <- cos(theta) + 0.1 * rnorm(n_points)
-y <- sin(theta) + 0.1 * rnorm(n_points)
+z <- runif(n, -1, 1)
+x <- cos(t) + 0.1 * rnorm(n)
+y <- sin(t) + 0.1 * rnorm(n)
 data3D <- cbind(x, y, z)
 
-plot3d(data3D[,1], data3D[,2], data3D[,3], 
-       col = abs(y), 
-       size = 2, 
-       type = "s", 
-       xlab = "X", ylab = "Y", zlab = "Z")
-rglwidget()
+norm_t <- (t - min(t)) / (max(t) - min(t))
+gradient_colors <- colorRampPalette(c("green", "blue"))(n)
+color_index <- round(norm_t * (n - 1)) + 1
+point_colors <- gradient_colors[color_index]
+
+#plot3d(data3D[,1], data3D[,2], data3D[,3], 
+#       col = point_colors, 
+#       size = 2, 
+#       type = "s", 
+#       xlab = "X", ylab = "Y", zlab = "Z")
+#rglwidget()
+
+scatterplot3d(data3D[,1], data3D[,2], data3D[,3],
+              main = "Cylinder",
+              xlab = "X", ylab = "Y", zlab = "Z",
+              color = point_colors, pch = 16)
 ```
+&nbsp;
+
 ```{r}
 # The low-dimensional embedding should look somewhat like a circle
 result <- k_isomap_embedding(data3D, k = 10, d = 2)
@@ -174,19 +200,16 @@ result <- k_isomap_embedding(data3D, k = 10, d = 2)
 embedding <- result$embedding
 
 plot(embedding, main = "ISOMAP Embedding of Cylinder (2D)", xlab = "Component 1", ylab = "Component 2",
-     pch = 19, col = "blue")
-
+     pch = 19, col = point_colors)
 ```
 
-
-```{r}
-
-
-```
+&nbsp;
 
 ### Simulations:
 
 #### Swiss Roll:
+
+&nbsp;
 
 ```{r}
 set.seed(2201)
@@ -213,14 +236,21 @@ gradient_colors <- colorRampPalette(c("green", "blue"))(n)
 color_index <- round(norm_t * (n - 1)) + 1
 point_colors <- gradient_colors[color_index]
 
+scatterplot3d(swiss_roll$x, swiss_roll$y, swiss_roll$z,
+              main = "Swiss Roll",
+              xlab = "X", ylab = "Y", zlab = "Z",
+              color = point_colors, pch = 16)
+
 # Visualize the Swiss roll in 3D using rgl
-plot3d(swiss_roll$x, swiss_roll$y, swiss_roll$z, 
-       col = point_colors, 
-       size = 2, 
-       type = "s", 
-       xlab = "X", ylab = "Y", zlab = "Z")
-rglwidget()
+#plot3d(swiss_roll$x, swiss_roll$y, swiss_roll$z, 
+#       col = point_colors, 
+#       size = 2, 
+#       type = "s", 
+#       xlab = "X", ylab = "Y", zlab = "Z")
+#rglwidget()
 ```
+
+&nbsp;
 
 ```{r}
 result <- k_isomap_embedding(swiss_roll, k = 10, d = 3)
@@ -232,22 +262,42 @@ plot(swiss_roll_embedding,  main = "ISOMAP Embedding of Swiss Roll (1000 samples
      col = point_colors,
      pch = 19)
 
-plot3d(swiss_roll_embedding[,1], swiss_roll_embedding[,2], swiss_roll_embedding[,3], 
-       col = point_colors, 
-       size = 2, 
-       type = "s", 
-       xlab = "X", ylab = "Y", zlab = "Z")
-rglwidget()
+
+#plot3d(swiss_roll_embedding[,1], swiss_roll_embedding[,2], swiss_roll_embedding[,3], 
+#       col = point_colors, 
+#       size = 2, 
+#       type = "s", 
+#       xlab = "X", ylab = "Y", zlab = "Z")
+#rglwidget()
 ```
 
-```{r}
+
+&nbsp;
+
+```{r Multiple k Swiss Roll}
 # Testing range of k-values
-K <- c(1, 5, 10, 15, 20)
+k_range <- c(5, 10, 15, 20)
+embeddings_list <- list()
+
+embeddings_list <- setNames(lapply(k_range, function(k_val) {
+  k_isomap_embedding(swiss_roll, k = k_val, d = 2)$embedding
+}), k_range)
+
+for (k in names(embeddings_list)) {
+  embedding <- embeddings_list[[k]]
+  plot(embedding, 
+       main = paste("ISOMAP Embedding (k =", k, ")"),
+       xlab = "Component 1", ylab = "Component 2",
+       col = point_colors, pch = 19)
+}
 ```
 
+&nbsp;
+
+\newpage
 #### MNIST:
 
-```{r}
+```{r MNIST}
 mnist <- keras::dataset_mnist()
 x_train <- mnist$train$x
 y_train <- mnist$train$y
@@ -268,7 +318,7 @@ X <- mnist$train$x[indices, , ]
 X <- array_reshape(X, c(10*n_each, 28*28))/255
 labels <- mnist$train$y[indices]
 
-result <- k_isomap_embedding(X, k = 20, d = 30)
+result <- eps_isomap_embedding(X, epsilon = 20, d = 30)
 mnist_embedding <- result$embedding
 
 # Plot the 2D embedding, coloring points by their digit labels.
@@ -278,17 +328,23 @@ plot(mnist_embedding,
      xlab = "Component 1", ylab = "Component 2",
      pch = 19, col = rainbow(10)[labels + 1])
 
-plot3d(mnist_embedding[,1], mnist_embedding[,2], mnist_embedding[,3], 
-       col = rainbow(10)[labels + 1], 
-       size = 2, 
-       type = "s", 
-       xlab = "X", ylab = "Y", zlab = "Z")
-rglwidget()
+scatterplot3d(mnist_embedding[,1], mnist_embedding[,2], mnist_embedding[,3],
+              main = "MNIST",
+              xlab = "X", ylab = "Y", zlab = "Z",
+              color = rainbow(10)[labels + 1], pch = 16)
+
+#plot3d(mnist_embedding[,1], mnist_embedding[,2], mnist_embedding[,3], 
+#       col = rainbow(10)[labels + 1], 
+#       size = 2, 
+#       type = "s", 
+#       xlab = "X", ylab = "Y", zlab = "Z")
+#rglwidget()
 ```
 
+\newpage
 ##### K-Means:
 
-```{r}
+```{r K-Means}
 set.seed(2201)
 kmeans_result <- kmeans(mnist_embedding, centers = 10)
 clusters <- kmeans_result$cluster - 1
@@ -305,12 +361,12 @@ sensitivity <- diag(confusion_matrix) / rowSums(confusion_matrix)
 print("Sensitivity for each class:")
 print(sensitivity)
 average_sensitivity <- mean(sensitivity)
-print(paste("Average Sensitivity:", round(average_sensitivity * 100, 2), "%"))
+print(paste("Average Sensitivity:", round(average_sensitivity*100, 2), "%"))
 ```
 
 
 
-```{r}
+```{r Overlay MNIST}
 # Select a subset for speed (e.g., 500 images)
 n <- 500
 X <- mnist$train$x[1:n, , ]
@@ -333,7 +389,7 @@ convert_to_raster <- function(vec, img_dim = 28) {
 }
 
 # Plot the 2D embedding without points (reserve space for images)
-plot(embedding, type = "n", main = "k-Isomap of MNIST",
+plot(embedding, type = "n", main = "k-ISOMAP of MNIST",
      xlab = "Component 1", ylab = "Component 2")
 
 # Choose a scaling factor for the thumbnail images (adjust as needed)
@@ -349,13 +405,15 @@ for (i in 1:n) {
 
 ```
 
-```{r}
+&nbsp;
+
+```{r Overlay MNIST Single Number}
 n <- 300  # number of images to use
 X <- mnist$train$x[1:n, , ]
-X <- array_reshape(X, c(n, 28 * 28)) / 255  # flatten and normalize
+X <- array_reshape(X, c(n, 28*28))/255  # flatten and normalize
 labels <- mnist$train$y[1:n]
 
-# Compute the k-Isomap embedding on the entire subset (all labels included)
+# Compute the k-ISOMAP embedding on the entire subset (all labels included)
 result <- k_isomap_embedding(X, k = 10, d = 2)
 embedding <- result$embedding
 
