@@ -1,6 +1,6 @@
 ---
 title: "ISOMAP Simulations"
-author: "Luis Sierra Muntané"
+author: "Bushra Haque, Yichen Ji, Luis Sierra Muntané"
 date: "2025-04-04"
 output: pdf_document
 ---
@@ -211,7 +211,7 @@ plot(embedding, main = "ISOMAP Embedding of Cylinder (2D)", xlab = "Component 1"
 
 &nbsp;
 
-```{r}
+```{r Swiss Roll}
 set.seed(2201)
 
 # Number of data points
@@ -232,7 +232,7 @@ swiss_roll <- data.frame(x = x, y = y, z = z)
 
 # Colors of the roll points
 norm_t <- (t - min(t)) / (max(t) - min(t))
-gradient_colors <- colorRampPalette(c("green", "blue"))(n)
+gradient_colors <- colorRampPalette(c("green", "blue", "red"))(n)
 color_index <- round(norm_t * (n - 1)) + 1
 point_colors <- gradient_colors[color_index]
 
@@ -252,8 +252,8 @@ scatterplot3d(swiss_roll$x, swiss_roll$y, swiss_roll$z,
 
 &nbsp;
 
-```{r}
-result <- k_isomap_embedding(swiss_roll, k = 10, d = 3)
+```{r Swiss Roll Embedding}
+result <- k_isomap_embedding(swiss_roll, k = 10, d = 2)
 #result <- eps_isomap_embedding(swiss_roll, eps = 3.5, d = 3)
 swiss_roll_embedding <- result$embedding
 
@@ -306,7 +306,7 @@ x_train <- array_reshape(x_train, c(nrow(x_train), 28*28))
 
 # Select a subset of data points to make this faster (max is 60k)
 set.seed(123)  # for reproducibility
-n_each <- 50  # number of images per digit to keep labels balanced
+n_each <- 400  # number of images per digit to keep labels balanced
 
 indices <- c()
 for (digit in 0:9) {
@@ -324,7 +324,7 @@ mnist_embedding <- result$embedding
 # Plot the 2D embedding, coloring points by their digit labels.
 # We use a color palette that maps the 10 digit classes.
 plot(mnist_embedding,
-     main = "ISOMAP Embedding of MNIST (500 samples)",
+     main = "ISOMAP Embedding of MNIST (4000 samples)",
      xlab = "Component 1", ylab = "Component 2",
      pch = 19, col = rainbow(10)[labels + 1])
 
@@ -422,7 +422,7 @@ embedding <- result$embedding
 
 # Plot the entire embedding as a background (optional)
 plot(embedding, type = "n",
-     main = "k-Isomap Embedding (Only Label '2' Images Overlaid)",
+     main = "k-Isomap Embedding (Only Label '5' Images Overlaid)",
      xlab = "Component 1", ylab = "Component 2")
 points(embedding, pch = 19, col = "lightgray")
 
